@@ -1,0 +1,31 @@
+## User exclusions (Private / Enterprise versions)
+ScopeDI.Enterprise/
+ScopeDI.Enterprise.Benchmarks/
+ScopeDI.Enterprise.Generator/
+ScopeDI.Exercises/
+ScopeDI.Full.sln
+BENCHMARK_RESULTS_FULL.md
+BenchmarkDotNet.Artifacts/
+
+## Build outputs
+[Bb]in/
+[Oo]bj/
+[Ll]og/
+[Ll]ogs/
+
+## Visual Studio
+.vs/
+*.user
+*.userosscache
+*.sln.docstates
+*.suo
+
+## Rider & IDEs
+.idea/
+*.sln.iml
+.vscode/
+
+## OS generated files
+Thumbs.db
+Desktop.ini
+.DS_Store
