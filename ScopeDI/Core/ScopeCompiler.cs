@@ -1,4 +1,4 @@
-﻿using System.Linq.Expressions;
+using System.Linq.Expressions;
 using System.Reflection;
 using FastExpressionCompiler;
 using ScopeDI.Abstractions;
@@ -17,7 +17,7 @@ namespace ScopeDI.Core
 
         private readonly IScopeBuilder _currentBuilder;
 
-        // Стек для защиты от StackOverflow при циклических зависимостях
+        // Tracks active resolution chain to detect circular dependencies at compile time
         private readonly Stack<Type> _buildStack = new();
 
         public ScopeCompiler(IScopeBuilder builder)
@@ -32,7 +32,7 @@ namespace ScopeDI.Core
 
             foreach (var blueprint in blueprints)
             {
-                // Очищаем стек перед сборкой каждого корневого сервиса
+                // Clear traversal stack before compiling each root service factory
                 _buildStack.Clear();
                 factories[blueprint.LocalId] = CompileRoot(blueprint);
             }
@@ -41,20 +41,20 @@ namespace ScopeDI.Core
 
         private Func<ExpressionScope, object> CompileRoot(Blueprint blueprint)
         {
-            // 1. Строим огромное плоское выражение для всего графа
+            // 1. Build a flattened expression tree for the entire dependency subgraph
             Expression body = BuildExpression(blueprint);
 
-            // 2. Оборачиваем результат в object (т.к. Func возвращает object)
+            // 2. Box value types or cast reference types to object for the factory delegate signature
             if (body.Type != typeof(object))
             {
                 body = Expression.Convert(body, typeof(object));
             }
 
-            // 3. Компилируем ОДИН РАЗ
+            // 3. Compile once upfront using FastExpressionCompiler
             return Expression.Lambda<Func<ExpressionScope, object>>(body, ScopeParam).CompileFast();
         }
 
-        // РЕКУРСИВНЫЙ МЕТОД ПОСТРОЕНИЯ ГРАФА
+        // Recursive dependency graph expression builder
         private Expression BuildExpression(Blueprint blueprint)
         {
             if (_buildStack.Contains(blueprint.ServiceType))
@@ -72,14 +72,14 @@ namespace ScopeDI.Core
                     .OrderByDescending(c => c.GetParameters().Length)
                     .FirstOrDefault() ?? throw new InvalidOperationException($"No public constructor for {blueprint.ImplementationType.Name}");
 
-                // Рекурсивно собираем аргументы!
+                // Recursively build expressions for all constructor parameters
                 var args = ctor.GetParameters()
                     .Select(p => ResolveArgument(p.ParameterType))
                     .ToArray();
 
                 Expression instantiation = Expression.New(ctor, args);
 
-                // ИСПРАВЛЕНИЕ БАГА IDisposable: используем локальную переменную, чтобы не вызывать new дважды
+                // Ensure IDisposable instances are pushed to the cleanup stack without duplicate instantiation
                 if (typeof(IDisposable).IsAssignableFrom(blueprint.ImplementationType))
                 {
                     var instanceVar = Expression.Variable(blueprint.ImplementationType, "instance");
@@ -93,18 +93,19 @@ namespace ScopeDI.Core
                         new[] { instanceVar },
                         assign,
                         pushCall,
-                        instanceVar // Возвращаем переменную
+                        instanceVar
                     );
                 }
 
                 if (blueprint.Lifetime == Lifetime.Transient)
                 {
-                    // Для транзиентов просто возвращаем инлайн-создание
+                    // Transient services return their inline instantiation expression directly
                     return instantiation;
                 }
                 else
                 {
-                    // Для Scoped/Singleton: scope.Instances[id] ?? (scope.Instances[id] = new Service())
+                    // Scoped/Singleton services cache the instance in the flat array:
+                    // scope.Instances[id] ?? (scope.Instances[id] = new Service())
                     var indexExpr = Expression.Constant(blueprint.LocalId);
                     var arrayAccess = Expression.ArrayAccess(Expression.Field(ScopeParam, InstancesField), indexExpr);
 
@@ -113,13 +114,12 @@ namespace ScopeDI.Core
                         Expression.Assign(arrayAccess, Expression.Convert(instantiation, typeof(object)))
                     );
 
-                    // Кастуем обратно к типу сервиса, чтобы не сломать родительский конструктор
+                    // Cast back to concrete implementation type for parent constructor injection
                     return Expression.Convert(coalesce, blueprint.ImplementationType);
                 }
             }
             finally
             {
-                // Убираем тип из стека после успешной сборки
                 _buildStack.Pop();
             }
         }
@@ -130,7 +130,7 @@ namespace ScopeDI.Core
             int depth = 0;
             Blueprint targetBlueprint = null;
 
-            // Ищем блюпринт в текущем скоупе или у родителей
+            // Search for the service blueprint in the current scope or parent hierarchy
             while (targetBuilder != null)
             {
                 targetBlueprint = GetBlueprints(targetBuilder).FirstOrDefault(b => b.ServiceType == type);
@@ -145,15 +145,12 @@ namespace ScopeDI.Core
 
             if (depth == 0)
             {
-                // Зависимость находится в ТЕКУЩЕМ скоупе. 
-                // Безупречно расплющиваем её прямо в этот же граф!
+                // Dependency belongs to the current scope — inline its expression directly into the graph
                 return BuildExpression(targetBlueprint);
             }
             else
             {
-                // Зависимость находится в РОДИТЕЛЬСКОМ скоупе (например, Singleton запрошен из Scope).
-                // Мы не можем её заинлайнить, иначе нарушим границы памяти. 
-                // Здесь оставляем старый добрый виртуальный вызов Resolve.
+                // Dependency belongs to an ancestor scope — traverse Parent links to preserve lifetime boundaries
                 Expression targetScope = ScopeParam;
                 for (int i = 0; i < depth; i++)
                 {
@@ -165,10 +162,8 @@ namespace ScopeDI.Core
             }
         }
 
-        // Хелпер для безопасного получения списка Blueprints (замена dynamic)
         private static IReadOnlyList<Blueprint> GetBlueprints(IScopeBuilder builder)
         {
-            // Поскольку у нас дженерик ScopeBuilder<TScope>, достаем свойство через рефлексию
             var prop = builder.GetType().GetProperty("Blueprints", BindingFlags.Public | BindingFlags.Instance);
             return (IReadOnlyList<Blueprint>)prop.GetValue(builder);
         }

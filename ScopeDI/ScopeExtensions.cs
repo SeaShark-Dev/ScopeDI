@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using ScopeDI.Abstractions;
 
 namespace ScopeDI
@@ -7,13 +7,13 @@ namespace ScopeDI
     {
         public static T Resolve<T>(this IScope scope)
         {
-            // 1. Ищем в текущем массиве
+            // 1. Lookup in the current scope's flat array
             if (scope.TryGetId(typeof(T), out int id))
             {
                 return (T)scope.Resolve(id);
             }
 
-            // 2. Fallback на родителя
+            // 2. Fallback to parent scope hierarchy
             if (scope.Parent != null)
             {
                 return scope.Parent.Resolve<T>();
@@ -24,13 +24,13 @@ namespace ScopeDI
 
         public static IScope CreateChildScope<TChildScopeMarker>(this IScope scope) where TChildScopeMarker : IScope
         {
-            // Используем дженерик только для маппинга в ID
+            // Map the scope marker type to its contiguous integer ScopeId
             if (scope.TryGetScopeId(typeof(TChildScopeMarker), out int scopeId))
             {
-                // Передаем чистый int
+                // Instantiate child scope via direct integer index
                 if (scope.TryCreateScope(scopeId, out IScope childScope))
                 {
-                    return childScope; // Возвращаем базовый интерфейс
+                    return childScope;
                 }
             }
             throw new InvalidOperationException($"Child scope {typeof(TChildScopeMarker).Name} is not configured in this hierarchy.");

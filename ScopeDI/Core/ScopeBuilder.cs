@@ -1,4 +1,4 @@
-﻿using ScopeDI.Abstractions;
+using ScopeDI.Abstractions;
 
 namespace ScopeDI.Core
 {
@@ -10,7 +10,7 @@ namespace ScopeDI.Core
         private int _idCounter = 0;
         private int _scopeIdCounter = 0;
 
-        // Карта: Type -> (ScopeId, Builder) для сборки плоского массива фабрик
+        // Maps child scope marker Type -> (ScopeId, Builder) for flat factory array compilation
         private readonly Dictionary<Type, (int ScopeId, object Builder)> _childBuildersMap = new();
 
         public IScopeBuilder ParentBuilder { get; }

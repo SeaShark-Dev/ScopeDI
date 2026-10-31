@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using BenchmarkDotNet.Attributes;
 using DryIoc;
 using Microsoft.Extensions.DependencyInjection;
@@ -10,7 +10,7 @@ using IScope = ScopeDI.Abstractions.IScope;
 namespace ScopeDI.Benchmarks.Benchmarks
 {
     // ==========================================
-    // 1. ИМИТАЦИЯ "ТОЛСТОГО" СКОУПА (Реестр забит хламом)
+    // 1. POLLUTED REGISTRY SIMULATION (Unused Scoped Services)
     // ==========================================
     public interface IDummy1 { }
     public class Dummy1 : IDummy1 { }
@@ -34,7 +34,7 @@ namespace ScopeDI.Benchmarks.Benchmarks
     public class Dummy10 : IDummy10 { }
 
     // ==========================================
-    // 2. КАСКАД ТРАНЗИЕНТОВ (Ловушка для Stack<IDisposable>)
+    // 2. TRANSIENT IDISPOSABLE CASCADE (Cleanup Stack Stress Test)
     // ==========================================
     public interface IHeavyTask1 : IDisposable { }
     public class HeavyTask1 : IHeavyTask1 { public void Dispose() { } }
@@ -49,7 +49,7 @@ namespace ScopeDI.Benchmarks.Benchmarks
     public interface IHeavyTask6 : IDisposable { }
     public class HeavyTask6 : IHeavyTask6 { public void Dispose() { } }
 
-    // Целевой класс. Ему плевать на Dummy, но он тянет все HeavyTask
+    // Target endpoint that ignores Dummy services and resolves all 6 disposable transients
     public interface IGodEndpoint { void Execute(); }
     public class GodEndpoint : IGodEndpoint
     {
@@ -71,7 +71,7 @@ namespace ScopeDI.Benchmarks.Benchmarks
         private int _requestScopeId;
         private int _endpointId;
 
-        // Эмуляция 5000 запросов
+        // Simulate 5,000 requests
         private const int RequestsCount = 5000;
 
         [GlobalSetup]
@@ -86,7 +86,7 @@ namespace ScopeDI.Benchmarks.Benchmarks
             _dryIoc = new Container(rules => rules.WithoutThrowOnRegisteringDisposableTransient());
             RegisterAllDryIoc(_dryIoc);
 
-            // 3. Твой ScopeDI
+            // 3. ScopeDI
             var rootBuilder = new ScopeBuilder<IRootScope>();
             rootBuilder.ConfigureChild<ExpressionScope>(child =>
             {
@@ -102,14 +102,12 @@ namespace ScopeDI.Benchmarks.Benchmarks
 
         private void RegisterAllMsDi(IServiceCollection s)
         {
-            // Забиваем реестр мусором (MS DI это проигнорирует при резолве)
             s.AddScoped<IDummy1, Dummy1>(); s.AddScoped<IDummy2, Dummy2>();
             s.AddScoped<IDummy3, Dummy3>(); s.AddScoped<IDummy4, Dummy4>();
             s.AddScoped<IDummy5, Dummy5>(); s.AddScoped<IDummy6, Dummy6>();
             s.AddScoped<IDummy7, Dummy7>(); s.AddScoped<IDummy8, Dummy8>();
             s.AddScoped<IDummy9, Dummy9>(); s.AddScoped<IDummy10, Dummy10>();
 
-            // Регистрируем транзиенты (MS DI имеет оптимизированный трекер)
             s.AddTransient<IHeavyTask1, HeavyTask1>(); s.AddTransient<IHeavyTask2, HeavyTask2>();
             s.AddTransient<IHeavyTask3, HeavyTask3>(); s.AddTransient<IHeavyTask4, HeavyTask4>();
             s.AddTransient<IHeavyTask5, HeavyTask5>(); s.AddTransient<IHeavyTask6, HeavyTask6>();
@@ -134,14 +132,12 @@ namespace ScopeDI.Benchmarks.Benchmarks
 
         private void RegisterAllScopeDi(ScopeBuilder<ExpressionScope> b)
         {
-            // Из-за этих регистраций твой массив Instances будет огромным
             b.Register<IDummy1, Dummy1>(Lifetime.Scoped); b.Register<IDummy2, Dummy2>(Lifetime.Scoped);
             b.Register<IDummy3, Dummy3>(Lifetime.Scoped); b.Register<IDummy4, Dummy4>(Lifetime.Scoped);
             b.Register<IDummy5, Dummy5>(Lifetime.Scoped); b.Register<IDummy6, Dummy6>(Lifetime.Scoped);
             b.Register<IDummy7, Dummy7>(Lifetime.Scoped); b.Register<IDummy8, Dummy8>(Lifetime.Scoped);
             b.Register<IDummy9, Dummy9>(Lifetime.Scoped); b.Register<IDummy10, Dummy10>(Lifetime.Scoped);
 
-            // А из-за этих стек Disposables будет постоянно реаллоцироваться
             b.Register<IHeavyTask1, HeavyTask1>(Lifetime.Transient); b.Register<IHeavyTask2, HeavyTask2>(Lifetime.Transient);
             b.Register<IHeavyTask3, HeavyTask3>(Lifetime.Transient); b.Register<IHeavyTask4, HeavyTask4>(Lifetime.Transient);
             b.Register<IHeavyTask5, HeavyTask5>(Lifetime.Transient); b.Register<IHeavyTask6, HeavyTask6>(Lifetime.Transient);
@@ -179,7 +175,7 @@ namespace ScopeDI.Benchmarks.Benchmarks
                 _myDiRoot.TryCreateScope(_requestScopeId, out IScope scope);
                 var endpoint = (IGodEndpoint)scope.Resolve(_endpointId);
                 endpoint.Execute();
-                scope.Dispose(); // Очистка стека и массивов
+                scope.Dispose();
             }
         }
     }

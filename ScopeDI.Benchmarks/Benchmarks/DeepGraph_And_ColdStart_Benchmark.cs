@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using BenchmarkDotNet.Attributes;
 using DryIoc;
 using Microsoft.Extensions.DependencyInjection;
@@ -10,7 +10,7 @@ using IScope = ScopeDI.Abstractions.IScope;
 namespace ScopeDI.Benchmarks.Benchmarks
 {
     // ==========================================
-    // ИМИТАЦИЯ СЛОЖНОГО ГРАФА ЗАВИСИМОСТЕЙ
+    // MULTI-LAYER DEPENDENCY GRAPH SIMULATION
     // ==========================================
     public interface IDatabaseConnection { }
     public class PostgresConnection : IDatabaseConnection { } // Root Scoped
@@ -42,7 +42,7 @@ namespace ScopeDI.Benchmarks.Benchmarks
     public interface IMatchController { void StartMatch(); }
     public class MatchController : IMatchController
     {
-        // Самая вершина графа: тянет логику, которая тянет репозитории, которые тянут БД
+        // Top of the graph: resolves logic -> repositories -> database & cache
         public MatchController(IMatchmakerLogic logic, IEventDispatcher dispatcher) { }
         public void StartMatch() { }
     } // Scoped
@@ -60,7 +60,7 @@ namespace ScopeDI.Benchmarks.Benchmarks
         [GlobalSetup]
         public void Setup()
         {
-            // Настройка MS DI
+            // Configure MS DI
             var services = new ServiceCollection();
             services.AddSingleton<IDatabaseConnection, PostgresConnection>();
             services.AddSingleton<IPlayerCache, RedisPlayerCache>();
@@ -71,7 +71,7 @@ namespace ScopeDI.Benchmarks.Benchmarks
             services.AddScoped<IMatchController, MatchController>();
             _msDi = services.BuildServiceProvider();
 
-            // Настройка DryIoc
+            // Configure DryIoc
             _dryIoc = new Container();
             _dryIoc.Register<IDatabaseConnection, PostgresConnection>(Reuse.Singleton);
             _dryIoc.Register<IPlayerCache, RedisPlayerCache>(Reuse.Singleton);
@@ -81,7 +81,7 @@ namespace ScopeDI.Benchmarks.Benchmarks
             _dryIoc.Register<IEventDispatcher, EventDispatcher>(Reuse.Transient);
             _dryIoc.Register<IMatchController, MatchController>(Reuse.Scoped);
 
-            // Настройка ScopeDI
+            // Configure ScopeDI
             var rootBuilder = new ScopeBuilder<IRootScope>();
             rootBuilder.Register<IDatabaseConnection, PostgresConnection>(Lifetime.Scoped);
             rootBuilder.Register<IPlayerCache, RedisPlayerCache>(Lifetime.Scoped);
@@ -103,7 +103,7 @@ namespace ScopeDI.Benchmarks.Benchmarks
         }
 
         // ==========================================
-        // ФАЗА 1: Сборка глубокого графа (Рантайм)
+        // PHASE 1: Deep Graph Resolution (Runtime)
         // ==========================================
         [Benchmark]
         public void MsDi_DeepGraph_Resolve()
@@ -131,7 +131,7 @@ namespace ScopeDI.Benchmarks.Benchmarks
         }
 
         // ==========================================
-        // ФАЗА 2: Холодный старт (Компиляция контейнера)
+        // PHASE 2: Cold Start (Container Compilation)
         // ==========================================
         [Benchmark]
         public IServiceProvider MsDi_ColdStart()

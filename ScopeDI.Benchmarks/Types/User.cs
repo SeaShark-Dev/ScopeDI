@@ -1,4 +1,4 @@
-﻿namespace ScopeDI.Benchmarks.Types
+namespace ScopeDI.Benchmarks.Types
 {
     public class User : IUser
     {
@@ -22,8 +22,7 @@
 
         public void PrintStats()
         {
-            Console.WriteLine($"<User:{_id }, {_person.Name }> : Привет из Expression!");
+            Console.WriteLine($"<User:{_id}, {_person.Name}> : Resolved via Expression Tree!");
         }
     }
 }
-

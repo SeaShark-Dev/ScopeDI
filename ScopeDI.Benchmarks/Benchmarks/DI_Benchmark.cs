@@ -1,7 +1,7 @@
-﻿using BenchmarkDotNet.Attributes;
+using BenchmarkDotNet.Attributes;
 using DryIoc;
 using Microsoft.Extensions.DependencyInjection;
-using ScopeDI; // Для методов-расширений
+using ScopeDI;
 using ScopeDI.Core;
 using ScopeDI.Benchmarks.Types;
 using System;
@@ -11,20 +11,20 @@ using IScope = ScopeDI.Abstractions.IScope;
 namespace ScopeDI.Benchmarks.Benchmarks
 {
 
-    [MemoryDiagnoser] // Покажет аллокации памяти
+    [MemoryDiagnoser]
     public class DI_Benchmark
     {
-        // Поля для Microsoft DI
+        // Microsoft DI providers
         private IServiceProvider _msDiTransient = null!;
         private IServiceProvider _msDiSingleton = null!;
         private IServiceProvider _msDiScopedProvider = null!;
 
-        // Поля для твоего ScopeDI
+        // ScopeDI scopes
         private IScope _myDiTransient = null!;
         private IScope _myDiSingleton = null!;
         private IScope _myDiRoot = null!;
 
-        // Поля для DryIoc
+        // DryIoc containers
         private IContainer _dryTransient = null!;
         private IContainer _drySingleton = null!;
         private IContainer _dryScopedContainer = null!;
@@ -34,7 +34,7 @@ namespace ScopeDI.Benchmarks.Benchmarks
         {
 
             // ==========================================
-            // 1. TRANSIENT (Каждый раз новый)
+            // 1. TRANSIENT (New instance per resolution)
             // ==========================================
             var msTransient = new ServiceCollection();
             msTransient.AddTransient<IPerson, Person>();
@@ -52,7 +52,7 @@ namespace ScopeDI.Benchmarks.Benchmarks
             _dryTransient = dryTransient;
 
             // ==========================================
-            // 2. SINGLETON (Один на всё время)
+            // 2. SINGLETON (Single shared instance)
             // ==========================================
             var msSingleton = new ServiceCollection();
             msSingleton.AddSingleton<IPerson, Person>();
@@ -70,7 +70,7 @@ namespace ScopeDI.Benchmarks.Benchmarks
             _drySingleton = drySingleton;
 
             // ==========================================
-            // 3. SCOPED (Тест жизненного цикла дочерних скоупов)
+            // 3. SCOPED (Child scope lifecycle & disposal)
             // ==========================================
             var msScoped = new ServiceCollection();
             msScoped.AddScoped<IPerson, Person>();
@@ -99,7 +99,7 @@ namespace ScopeDI.Benchmarks.Benchmarks
         }
 
         // ==========================================
-        // БЕНЧМАРКИ
+        // BENCHMARKS
         // ==========================================
 
         [Benchmark(Baseline = true)]

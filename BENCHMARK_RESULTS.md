@@ -1,23 +1,23 @@
 # ScopeDI Benchmark Results & Performance Analysis
 
-Этот документ содержит сводные результаты тестирования производительности легковесного DI-контейнера **ScopeDI (MyDi)** в сравнении с **Microsoft.Extensions.DependencyInjection (MsDi)** и **DryIoc**.
+This document summarizes the performance benchmarks of the lightweight **ScopeDI (MyDi)** Dependency Injection container compared against **Microsoft.Extensions.DependencyInjection (MsDi)** and **DryIoc**.
 
-Все бенчмарки выполнены с использованием [BenchmarkDotNet v0.15.8](https://benchmarkdotnet.org/).
+All benchmarks were executed using [BenchmarkDotNet v0.15.8](https://benchmarkdotnet.org/).
 
 ---
 
-## 1. Базовый бенчмарк: Жизненные циклы и Скоупы (`DI_Benchmark`)
+## 1. Core Lifetimes & Scoped Resolution (`DI_Benchmark`)
 
-* **Дата замера**: 16.10.2026
-* **Окружение**: Intel Core i5-14600KF 3.50GHz (20 logical / 14 physical cores), Windows 11 (25H2), .NET 9.0.21, RyuJIT x86-64-v3.
-* **Описание**:
-  * `DirectNew`: эталонный базовый вызов через оператор `new` (`new User(new Person())`).
-  * `Transient`: создание нового экземпляра графа сервисов на каждый запрос.
-  * `Singleton`: получение единственного экземпляра из корневого контейнера.
-  * `Scoped`: открытие дочернего скоупа (`CreateScope` / `CreateChildScope` / `OpenScope`), разрешение зависимости (`IUser`) и завершение скоупа (`Dispose`).
-  * `MyDi_Scoped_Direct`: ускоренный сценарий ScopeDI — создание скоупа по предвычисленному `ScopeId` и разрешение сервиса по целочисленному `ServiceId`.
+* **Benchmark Date**: 16.10.2026
+* **Environment**: Intel Core i5-14600KF 3.50GHz (20 logical / 14 physical cores), Windows 11 (25H2), .NET 9.0.21, RyuJIT x86-64-v3.
+* **Scenario Description**:
+  * `DirectNew`: Baseline handwritten constructor invocation (`new User(new Person())`).
+  * `Transient`: Creating a fresh service graph instance on every request.
+  * `Singleton`: Resolving a single shared instance from the root container.
+  * `Scoped`: Opening a child scope (`CreateScope` / `CreateChildScope` / `OpenScope`), resolving `IUser`, and disposing the scope (`Dispose`).
+  * `MyDi_Scoped_Direct`: Ultra-low-latency ScopeDI path — creating a child scope via precomputed `ScopeId` and resolving the service by integer `ServiceId`.
 
-### Таблица результатов
+### Results Table
 
 | Method | Mean | Error | StdDev | Ratio | RatioSD | Gen0 | Allocated | Alloc Ratio |
 | :--- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
@@ -33,22 +33,22 @@
 | **DryIoc_Scoped** | 133.04 ns | 1.549 ns | 1.293 ns | 9.19 | 0.99 | 0.0343 | 432 B | 7.71 |
 | **MyDi_Scoped_Direct** | **61.73 ns** | 0.960 ns | 0.943 ns | **4.27** | 0.46 | 0.0159 | **200 B** | **3.57** |
 
-### Аналитика:
-1. **Scoped-жизненный цикл**: ScopeDI превосходит Microsoft DI более чем в **2 раза** (81.02 ns против 167.66 ns) и обходит DryIoc на **40%** (133.04 ns).
-2. **Аллокации памяти**: ScopeDI выделяет **200 байт** на цикл создания и освобождения скоупа (в MS DI — 344 байта, в DryIoc — 432 байта).
-3. **Прямой доступ (`MyDi_Scoped_Direct`)**: При разрешении по индексам ScopeId/ServiceId время сокращается до **61.73 ns** (в 2.7 раза быстрее MS DI).
+### Key Takeaways:
+1. **Scoped Lifecycle**: ScopeDI outperforms Microsoft DI by more than **2x** (81.02 ns vs 167.66 ns) and beats DryIoc by **40%** (133.04 ns).
+2. **Memory Allocations**: ScopeDI allocates only **200 B** per full scope creation and disposal cycle (compared to 344 B in MS DI and 432 B in DryIoc).
+3. **Direct Index Access (`MyDi_Scoped_Direct`)**: Resolving by precomputed `ScopeId` and `ServiceId` indices drops resolution time to **61.73 ns** (**2.7x faster** than MS DI).
 
 ---
 
-## 2. Глубокий граф зависимостей и холодный старт (`DeepGraph_And_ColdStart_Benchmark`)
+## 2. Deep Dependency Graph & Cold Start (`DeepGraph_And_ColdStart_Benchmark`)
 
-* **Дата замера**: 08.06.2026
-* **Окружение**: Intel Core i5-9400F 2.90GHz, Windows 10, .NET 9.0.14.
-* **Описание**:
-  * `DeepGraph_Resolve`: разрешение многоуровневого глубокого дерева зависимостей в уже инициализированном контейнере.
-  * `ColdStart`: инициализация и сборка контейнера с нуля («холодная фаза»).
+* **Benchmark Date**: 08.06.2026
+* **Environment**: Intel Core i5-9400F 2.90GHz, Windows 10, .NET 9.0.14.
+* **Scenario Description**:
+  * `DeepGraph_Resolve`: Resolving a multi-layer deep dependency tree inside an already initialized container.
+  * `ColdStart`: Container registration and initial compilation from scratch.
 
-### Таблица результатов
+### Results Table
 
 | Method | Mean | Error | StdDev | Gen0 | Gen1 | Allocated |
 | :--- | ---: | ---: | ---: | ---: | ---: | ---: |
@@ -59,22 +59,22 @@
 | **DryIoc_ColdStart** | 689.40 ns | 8.748 ns | 7.755 ns | 0.2747 | 0.0010 | 1 296 B |
 | **MyDi_ColdStart** | 1,106,375.03 ns (~1.1 ms) | 9,488.528 ns | 8,411.333 ns | 9.7656 | 7.8125 | 49 215 B |
 
-### Аналитика:
-1. **Глубокие графы в рантайме**: ScopeDI разрешает зависимости почти в **3.7 раза быстрее Microsoft DI** (89 ns против 328 ns) и в **2.2 раза быстрее DryIoc** (197 ns). При этом аллокации памяти снижены более чем в 2.3 раза (288 B против 688 B у MS DI).
-2. **Компромисс архитектуры**: Холодный старт ScopeDI требует ~1.1 мс из-за компиляции дерева выражений/делегатов (expression tree compilation) на этапе `Build()`.
+### Key Takeaways:
+1. **Deep Runtime Graphs**: ScopeDI resolves deep object graphs **3.7x faster than Microsoft DI** (89 ns vs 328 ns) and **2.2x faster than DryIoc** (197 ns), while cutting heap allocations by more than 2.3x (288 B vs 688 B in MS DI).
+2. **Architectural Trade-off**: ScopeDI's cold start takes ~1.1 ms because the entire dependency graph is flattened and compiled via Expression Trees (`FastExpressionCompiler`) upfront during `Build()`.
 
 ---
 
-## 3. Агрессивная и параллельная веб-нагрузка (`Aggressive_DI_Benchmark`)
+## 3. Aggressive Sequential & Parallel Web Load (`Aggressive_DI_Benchmark`)
 
-* **Дата замера**: 16.06.2026
-* **Окружение**: Intel Core i5-9400F 2.90GHz, Windows 10, .NET 9.0.14.
-* **Описание**:
-  * 10 000 веб-запросов. На каждый запрос открывается скоуп, создаётся контроллер со смешанным графом: Singleton (`ICache`), Scoped (`IRepository`), Transient Disposable (`ILogger`), вызов метода обработки и освобождение скоупа.
-  * `Sequential_Complex`: последовательное выполнение 10 000 запросов.
-  * `Parallel_WebLoad`: параллельная обработка через `Parallel.For`.
+* **Benchmark Date**: 16.06.2026
+* **Environment**: Intel Core i5-9400F 2.90GHz, Windows 10, .NET 9.0.14.
+* **Scenario Description**:
+  * 10,000 simulated web requests. Each request opens a child scope, resolves a controller with a mixed lifetime graph — Singleton (`ICache`), Scoped (`IRepository`), and Transient Disposable (`ILogger`) — invokes the handler, and disposes the scope.
+  * `Sequential_Complex`: Sequential execution of 10,000 requests.
+  * `Parallel_WebLoad`: Concurrent execution across threads via `Parallel.For`.
 
-### Таблица результатов
+### Results Table
 
 | Method | Mean | Error | StdDev | Gen0 | Gen1 | Allocated | Lock Contentions |
 | :--- | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
@@ -85,22 +85,22 @@
 | **DryIoc_Parallel_WebLoad** | 522.4 μs | 10.37 μs | 22.10 μs | 918.9453 | 11.7188 | 4.05 MB | - |
 | **MyDi_Parallel_WebLoad** | **624.7 μs** | 12.35 μs | 28.38 μs | 751.9531 | 10.7422 | **3.36 MB** | 0.0020 |
 
-### Аналитика:
-1. **Однопоточная сложная нагрузка**: ScopeDI быстрее MS DI в **2.4 раза** и обходит DryIoc на **28%**, экономя 1.6 MB оперативной памяти на 10 000 запросов.
-2. **Многопоточная нагрузка**: ScopeDI отрабатывает быстрее Microsoft DI (624 μs vs 726 μs) и держит стабильно низкие аллокации (3.36 MB против 4.96 MB у MS DI и 4.05 MB у DryIoc).
+### Key Takeaways:
+1. **Sequential Complex Workload**: ScopeDI is **2.4x faster** than MS DI and **28% faster** than DryIoc, saving 1.6 MB of heap allocations per 10,000 requests.
+2. **Concurrent Multi-Threaded Workload**: ScopeDI completes faster than Microsoft DI (624 μs vs 726 μs) while maintaining the lowest memory footprint (3.36 MB vs 4.96 MB in MS DI and 4.05 MB in DryIoc).
 
 ---
 
-## 4. Стресс-тест очистки ресурсов (`ScopeDI_Massacre_Benchmark` / `Enterprise Nightmare`)
+## 4. Resource Teardown Stress Test (`ScopeDI_Massacre_Benchmark` / `Enterprise Nightmare`)
 
-* **Дата замера**: 16.06.2026
-* **Окружение**: Intel Core i5-9400F 2.90GHz, Windows 10, .NET 9.0.14.
-* **Описание**:
-  * 5 000 запросов.
-  * Реестр намеренно захламлён фиктивными регистрациями (`Dummy1`...`Dummy10`).
-  * Целевой эндпоинт тянет цепочку Disposable-транзиентов (`IHeavyTask1`...`IHeavyTask6`), нагружая стек очистки ресурсов при диспозе скоупа.
+* **Benchmark Date**: 16.06.2026
+* **Environment**: Intel Core i5-9400F 2.90GHz, Windows 10, .NET 9.0.14.
+* **Scenario Description**:
+  * 5,000 requests.
+  * The service registry is intentionally polluted with unused scoped registrations (`Dummy1`...`Dummy10`).
+  * The target endpoint resolves a cascade of 6 transient `IDisposable` dependencies (`IHeavyTask1`...`IHeavyTask6`), stress-testing the scope disposal cleanup stack.
 
-### Таблица результатов
+### Results Table
 
 | Method | Mean | Error | StdDev | Ratio | Gen0 | Gen1 | Allocated | Alloc Ratio |
 | :--- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
@@ -108,14 +108,14 @@
 | **DryIoc_Massacre** | 571.2 μs | 0.54 μs | 0.45 μs | 0.33 | 390.6250 | - | 1.75 MB | 0.47 |
 | **MyDi_Massacre** | **742.0 μs** | 2.35 μs | 2.09 μs | **0.43** | 611.3281 | 0.9766 | **2.75 MB** | **0.74** |
 
-### Аналитика:
-1. ScopeDI справляется с каскадным `Dispose` и замусоренным реестром в **2.3 раза быстрее Microsoft DI** (742 μs против 1728 μs), аллоцируя на 26% меньше памяти.
+### Key Takeaways:
+1. ScopeDI handles cascading `IDisposable` cleanup and polluted registries **2.3x faster than Microsoft DI** (742 μs vs 1,728 μs) while allocating 26% less memory.
 
 ---
 
-## Итоговое резюме архитектурных преимуществ ScopeDI
+## Summary of Architectural Advantages
 
-1. **Главная суперсила — Scoped и дочерние скоупы**: архитектура ScopeDI изначально оптимизирована под частые создания и уничтожения скоупов (типично для Web-серверов, игровых комнат, сессий).
-2. **Сниженное давление на GC**: аллокации памяти при работе со скоупами на 30–50% ниже, чем у стандартного Microsoft DI.
-3. **Прямой резолв по индексам (`ScopeId` / `ServiceId`)**: позволяет полностью исключить оверхед поиска в словарях и хэш-таблицах в критичных путях выполнения.
-4. **Характерная особенность (tradeoff)**: перенос времени резолва на фазу компиляции (`Build()`). Холодный старт составляет ~1 мс, но последующие вызовы выполняются со скоростью, близкой к чистому вызову `new`.
+1. **Designed for High-Frequency Scopes**: ScopeDI is purpose-built for workloads that rapidly create and tear down child scopes (web servers, game server rooms, per-connection network pipelines).
+2. **Reduced GC Pressure**: Memory allocations during scoped resolution are 30–50% lower than standard Microsoft DI.
+3. **Direct Array Index Resolution (`ScopeId` / `ServiceId`)**: Eliminates dictionary and hash-table lookups on hot paths.
+4. **Upfront Compilation Trade-off**: Shifts graph analysis and delegate compilation to `Build()` (~1 ms cold start) so runtime resolutions execute at near-native `new` speeds.

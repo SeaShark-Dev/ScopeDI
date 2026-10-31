@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Threading.Tasks;
 using BenchmarkDotNet.Attributes;
 using DryIoc;
@@ -10,37 +10,37 @@ using IScope = ScopeDI.Abstractions.IScope;
 namespace ScopeDI.Benchmarks.Benchmarks
 {
     // ==========================================
-    // ТЕСТОВЫЕ КЛАССЫ (Сложный граф)
+    // TEST SERVICE GRAPH (Mixed Lifetimes)
     // ==========================================
     public interface ICache { }
-    public class MemoryCache : ICache { } // Будет Singleton / Root Scoped
+    public class MemoryCache : ICache { } // Singleton / Root Scoped
 
     public interface ILogger : IDisposable { }
     public class ConsoleLogger : ILogger
     {
-        public void Dispose() { /* Имитация очистки ресурсов */ }
+        public void Dispose() { /* Simulated resource cleanup */ }
     }
 
     public interface IRepository { }
     public class UserRepository : IRepository
     {
-        // Смешивание Scoped и Singleton/Root
+        // Combines Scoped and Root Singleton dependencies
         public UserRepository(ICache cache, ILogger logger) { }
     }
 
     public interface IController { void Handle(); }
     public class UserController : IController
     {
-        // Вершина графа
+        // Root of the request dependency graph
         public UserController(IRepository repo, ILogger logger) { }
-        public void Handle() { /* Имитация работы */ }
+        public void Handle() { /* Simulated request handling */ }
     }
 
     // ==========================================
-    // БЕНЧМАРК
+    // BENCHMARK SUITE
     // ==========================================
     [MemoryDiagnoser]
-    [ThreadingDiagnoser] // Покажет потоковые блокировки (Lock Contention)
+    [ThreadingDiagnoser] // Measures lock contentions under parallel load
     public class Aggressive_DI_Benchmark
     {
         private IServiceProvider _msDi = null!;
@@ -72,7 +72,7 @@ namespace ScopeDI.Benchmarks.Benchmarks
 
             // 3. ScopeDI
             var rootBuilder = new ScopeBuilder<IRootScope>();
-            rootBuilder.Register<ICache, MemoryCache>(Lifetime.Scoped); // Твой аналог Singleton
+            rootBuilder.Register<ICache, MemoryCache>(Lifetime.Scoped); // Root-scoped singleton
 
             rootBuilder.ConfigureChild<ExpressionScope>(child =>
             {
@@ -83,14 +83,14 @@ namespace ScopeDI.Benchmarks.Benchmarks
 
             _myDiRoot = rootBuilder.Build();
 
-            // Кэшируем ID для максимальной скорости твоего DI
+            // Precompute integer IDs for direct array access
             _myDiRoot.TryGetScopeId(typeof(ExpressionScope), out _childScopeId);
             using var tempScope = _myDiRoot.CreateChildScope<ExpressionScope>();
             tempScope.TryGetId(typeof(IController), out _controllerId);
         }
 
         // ==========================================
-        // ФАЗА 1: ПОСЛЕДОВАТЕЛЬНЫЙ СТРЕСС-ТЕСТ (Глубина и IDisposable)
+        // PHASE 1: SEQUENTIAL STRESS TEST (Graph Depth & IDisposable)
         // ==========================================
         [Benchmark]
         public void MsDi_Sequential_Complex()
@@ -122,12 +122,12 @@ namespace ScopeDI.Benchmarks.Benchmarks
                 _myDiRoot.TryCreateScope(_childScopeId, out IScope scope);
                 var controller = (IController)scope.Resolve(_controllerId);
                 controller.Handle();
-                scope.Dispose(); // Отработка Stack<IDisposable>
+                scope.Dispose(); // Disposes tracked Stack<IDisposable>
             }
         }
 
         // ==========================================
-        // ФАЗА 2: АГРЕССИВНЫЙ МНОГОПОТОЧНЫЙ ТЕСТ (Имитация Web-сервера)
+        // PHASE 2: CONCURRENT MULTI-THREADED WEB LOAD
         // ==========================================
         [Benchmark]
         public void MsDi_Parallel_WebLoad()
